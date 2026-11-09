@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sort Master: リアル棚整理パズル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap');
+        
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background: #2A1810;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .wood-shelf {
+            background: linear-gradient(180deg, #3E2317 0%, #2A1810 100%);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 20px rgba(0,0,0,0.5);
+            border: 6px solid #5C3A21;
+        }
+
+        .shelf-row {
+            background: rgba(0, 0, 0, 0.4);
+            border: 3px solid #4A2E1B;
+            box-shadow: inset 0 4px 8px rgba(0,0,0,0.6);
+        }
+
+        .item-card {
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            background: linear-gradient(135deg, #4A2E1B 0%, #2D1A0E 100%);
+            border: 2px solid #6E462A;
+        }
+
+        .item-card.movable {
+            border: 3px solid #FBBF24;
+            box-shadow: 0 0 12px rgba(251, 191, 36, 0.6);
+            transform: scale(1.05);
+            cursor: pointer;
+        }
+
+        .item-card.movable::after {
+            content: "★";
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #FBBF24;
+            color: #000;
+            font-size: 11px;
+            font-weight: 900;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+
+        .selected {
+            border-color: #EF4444 !important;
+            box-shadow: 0 0 18px rgba(239, 68, 68, 0.8) !important;
+            transform: translateY(-4px) scale(1.08) !important;
+        }
+
+        /* 完成した棚のスタイル */
+        .completed-shelf {
+            border: 2px solid #10B981 !important;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.5) !important;
+        }
+
+        .completed-badge {
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white;
+            font-size: 9px;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 9999px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            white-space: nowrap;
+            z-index: 20;
+        }
+
+        .tray-slot {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #5C3A21;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen max-w-md mx-auto text-white overflow-hidden">
+
+    <!-- ヘッダー -->
+    <header class="p-3 flex justify-between items-center bg-black/40 border-b border-amber-900/40">
+        <div>
+            <h1 class="text-lg font-black text-amber-400">Sort Master</h1>
+            <p class="text-[10px] text-amber-200/70">棚と棚の真ん中だけ操作可能</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs font-bold text-amber-300">
+                LEVEL <span id="level-num">1</span>
+            </div>
+            <button onclick="initGame(currentLevel)" class="bg-amber-800 hover:bg-amber-700 text-amber-100 p-2 rounded-lg text-xs transition">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 通知トースト -->
+    <div id="toast" class="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-red-600/90 text-white text-xs px-4 py-2 rounded-full font-bold shadow-lg opacity-0 pointer-events-none transition-all duration-300">
+        メッセージ
+    </div>
+
+    <!-- クリアオーバーレイ -->
+    <div id="win-modal" class="fixed inset-0 z-50 bg-black/80 flex flex-col items-center justify-center gap-4 opacity-0 pointer-events-none transition-all duration-300">
+        <div class="text-4xl animate-bounce">🎉</div>
+        <h2 class="text-2xl font-black text-amber-400 tracking-wider">LEVEL COMPLETE !!</h2>
+        <p class="text-amber-200 text-xs font-bold">すべての棚がきれいに整理されました！</p>
+        <button onclick="nextLevel()" class="mt-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-amber-950 font-black px-6 py-2.5 rounded-full text-sm shadow-lg shadow-orange-950/50 transition transform active:scale-95">
+            次のレベルへ ➔
+        </button>
+    </div>
+
+    <!-- パズルメインエリア -->
+    <main class="flex-1 p-2 flex flex-col justify-center items-center overflow-y-auto">
+        <div class="wood-shelf w-full rounded-2xl p-2.5 flex flex-col gap-2">
+            
+            <div class="text-center text-[10px] text-amber-400/90 font-bold tracking-wider flex items-center justify-center gap-2">
+                <span>← 奥に詰める</span>
+                <span class="bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/40 text-amber-300">中央（真ん中）の空欄</span>
+                <span>奥に詰める →</span>
+            </div>
+
+            <div id="shelf-container" class="flex flex-col gap-2">
+                <!-- Javascriptで生成 -->
+            </div>
+        </div>
+    </main>
+
+    <!-- 一時置きトレイ -->
+    <footer class="p-3 bg-black/60 border-t border-amber-900/40 flex flex-col gap-2">
+        <div class="flex justify-between items-center text-xs px-1 text-amber-300/80 font-bold">
+            <span>一時置きトレイ</span>
+            <span id="tray-count">0 / 4</span>
+        </div>
+        
+        <div id="tray-container" class="flex justify-center gap-2">
+            <!-- Javascriptで生成 -->
+        </div>
+    </footer>
+
+    <script>
+        const ALL_ITEMS = [
+            { id: 'carrot', icon: '🥕', color: 'from-orange-600 to-amber-700' },
+            { id: 'chili', icon: '🌶️', color: 'from-red-600 to-rose-800' },
+            { id: 'lemon', icon: '🍋', color: 'from-yellow-500 to-amber-600' },
+            { id: 'apple', icon: '🍎', color: 'from-red-500 to-red-700' },
+            { id: 'eggplant', icon: '🍆', color: 'from-purple-600 to-indigo-900' },
+            { id: 'corn', icon: '🌽', color: 'from-yellow-600 to-amber-800' }
+        ];
+
+        const MAX_CAPACITY = 6;
+        let currentLevel = 1;
+        let shelves = [];
+        let tray = [];
+        let selected = null; // { source: 'shelf'|'tray', rowIndex, isLeft, index }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            if (!toast) return;
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 1800);
+        }
+
+        // レベルに応じたステージ自動生成 (レベルが上がるごとにアイテム種数・棚段数が増加)
+        function initGame(lvl = 1) {
+            currentLevel = lvl;
+            const levelEl = document.getElementById('level-num');
+            if (levelEl) levelEl.innerText = currentLevel;
+
+            // レベルごとにアイテム数決定 (Level 1: 4種, Level 2: 5種, Level 3+: 6種)
+            const itemTypeCount = Math.min(4 + Math.floor((currentLevel - 1) / 2), ALL_ITEMS.length);
+            const activeItems = ALL_ITEMS.slice(0, itemTypeCount);
+
+            // 各アイテムが6個ずつあるプールを作成
+            let pool = [];
+            activeItems.forEach(item => {
+                for (let i = 0; i < MAX_CAPACITY; i++) {
+                    pool.push(item.id);
+                }
+            });
+
+            // シャッフル
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+
+            // 必要棚数の計算 (各段左右2個の棚。アイテム種数+1個分の空き枠余分を確保)
+            const totalShelvesCount = itemTypeCount + 1 + Math.floor(currentLevel / 3);
+            const rowCount = Math.max(3, Math.ceil(totalShelvesCount / 2));
+
+            shelves = [];
+            let poolIdx = 0;
+
+            for (let r = 0; r < rowCount; r++) {
+                const rowObj = { left: [], right: [] };
+                
+                // 左棚に詰める (満杯にはせずバラつきを持たせる)
+                const leftCount = (poolIdx < pool.length) ? Math.min(Math.floor(Math.random() * 3) + 3, pool.length - poolIdx) : 0;
+                for (let c = 0; c < leftCount; c++) {
+                    rowObj.left.push(pool[poolIdx++]);
+                }
+
+                // 右棚に詰める
+                const rightCount = (poolIdx < pool.length) ? Math.min(Math.floor(Math.random() * 3) + 3, pool.length - poolIdx) : 0;
+                for (let c = 0; c < rightCount; c++) {
+                    rowObj.right.push(pool[poolIdx++]);
+                }
+
+                shelves.push(rowObj);
+            }
+
+            // 残りプールがあれば空いてる棚へ配分
+            while (poolIdx < pool.length) {
+                for (let r = 0; r < shelves.length && poolIdx < pool.length; r++) {
+                    if (shelves[r].left.length < MAX_CAPACITY - 1) {
+                        shelves[r].left.push(pool[poolIdx++]);
+                    } else if (shelves[r].right.length < MAX_CAPACITY - 1) {
+                        shelves[r].right.push(pool[poolIdx++]);
+                    }
+                }
+            }
+
+            tray = [];
+            selected = null;
+
+            // モーダル非表示
+            const winModal = document.getElementById('win-modal');
+            if (winModal) winModal.classList.add('opacity-0', 'pointer-events-none');
+
+            render();
+        }
+
+        function render() {
+            const container = document.getElementById('shelf-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            shelves.forEach((row, rowIndex) => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'shelf-row rounded-xl p-1.5 flex items-center justify-between gap-1';
+
+                // --- 左棚 ---
+                const leftShelfEl = document.createElement('div');
+                const isLeftComplete = row.left.length === MAX_CAPACITY && row.left.every(item => item === row.left[0]);
+                leftShelfEl.className = `flex-1 flex justify-end items-center gap-0.5 relative ${isLeftComplete ? 'completed-shelf' : ''}`;
+                
+                if (isLeftComplete) {
+                    const badge = document.createElement('div');
+                    badge.className = 'completed-badge';
+                    badge.innerText = '✨完成！！✨';
+                    leftShelfEl.appendChild(badge);
+                }
+
+                // 左棚のマスを描画 (奥 [0] -> 手前・中央 [MAX-1])
+                for (let i = 0; i < MAX_CAPACITY; i++) {
+                    const slot = document.createElement('div');
+                    const item = row.left[i];
+                    const isMovable = (i === row.left.length - 1);
+                    const isSelected = selected && selected.source === 'shelf' && selected.rowIndex === rowIndex && selected.isLeft && selected.index === i;
+
+                    slot.className = `flex-1 max-w-[36px] h-9 sm:h-10 rounded-lg flex items-center justify-center relative font-bold text-sm sm:text-base transition-all `;
+                    
+                    if (item) {
+                        const itemData = ALL_ITEMS.find(it => it.id === item) || { color: 'from-amber-600 to-amber-800', icon: '❓' };
+                        slot.className += `item-card bg-gradient-to-br ${itemData.color} ${isMovable ? 'movable' : 'opacity-70'} ${isSelected ? 'selected' : ''}`;
+                        slot.innerText = itemData.icon;
+                        slot.onclick = () => handleSlotClick(rowIndex, true);
+                    } else {
+                        slot.className += 'border border-dashed border-amber-900/40 bg-black/20 text-[9px] text-amber-200/30 flex items-center justify-center';
+                        slot.innerText = i === row.left.length ? '空' : '奥';
+                        slot.onclick = () => handleSlotClick(rowIndex, true);
+                    }
+                    leftShelfEl.appendChild(slot);
+                }
+
+                // --- 中央の「縦一列 空スペース」 ---
+                const centerGapEl = document.createElement('div');
+                centerGapEl.className = 'w-5 sm:w-6 h-9 sm:h-10 border border-dashed border-amber-500/40 bg-amber-500/10 rounded-lg flex items-center justify-center text-[8px] sm:text-[9px] text-amber-300 font-bold flex-col leading-tight shrink-0 mx-0.5';
+                centerGapEl.innerHTML = '<span>↔</span><span>間</span>';
+
+                // --- 右棚 ---
+                const rightShelfEl = document.createElement('div');
+                const isRightComplete = row.right.length === MAX_CAPACITY && row.right.every(item => item === row.right[0]);
+                rightShelfEl.className = `flex-1 flex justify-end items-center gap-0.5 relative ${isRightComplete ? 'completed-shelf' : ''}`;
+
+                if (isRightComplete) {
+                    const badge = document.createElement('div');
+                    badge.className = 'completed-badge';
+                    badge.innerText = '✨完成！！✨';
+                    rightShelfEl.appendChild(badge);
+                }
+
+                // 右棚のマスを描画 (手前・中央 [0] -> 奥 [MAX-1])
+                // マスを右詰めで配置するため、空枠とアイテムの並びを奥（右側）から詰まるように計算
+                const rightEmptyCount = MAX_CAPACITY - row.right.length;
+                for (let i = 0; i < MAX_CAPACITY; i++) {
+                    const slot = document.createElement('div');
+                    const isItemSlot = i >= rightEmptyCount;
+                    const itemIndex = i - rightEmptyCount;
+                    const item = isItemSlot ? row.right[itemIndex] : null;
+                    const isMovable = (i === rightEmptyCount && row.right.length > 0);
+                    const isSelected = selected && selected.source === 'shelf' && selected.rowIndex === rowIndex && !selected.isLeft && selected.index === 0;
+
+                    slot.className = `flex-1 max-w-[36px] h-9 sm:h-10 rounded-lg flex items-center justify-center relative font-bold text-sm sm:text-base transition-all `;
+
+                    if (item) {
+                        const itemData = ALL_ITEMS.find(it => it.id === item) || { color: 'from-amber-600 to-amber-800', icon: '❓' };
+                        slot.className += `item-card bg-gradient-to-br ${itemData.color} ${isMovable ? 'movable' : 'opacity-70'} ${isSelected ? 'selected' : ''}`;
+                        slot.innerText = itemData.icon;
+                        slot.onclick = () => handleSlotClick(rowIndex, false);
+                    } else {
+                        slot.className += 'border border-dashed border-amber-900/40 bg-black/20 text-[9px] text-amber-200/30 flex items-center justify-center';
+                        slot.innerText = (i === rightEmptyCount - 1) ? '空' : '奥';
+                        slot.onclick = () => handleSlotClick(rowIndex, false);
+                    }
+                    rightShelfEl.appendChild(slot);
+                }
+
+                rowEl.appendChild(leftShelfEl);
+                rowEl.appendChild(centerGapEl);
+                rowEl.appendChild(rightShelfEl);
+                container.appendChild(rowEl);
+            });
+
+            // トレイの描画
+            const trayContainer = document.getElementById('tray-container');
+            if (trayContainer) {
+                trayContainer.innerHTML = '';
+                for (let i = 0; i < 4; i++) {
+                    const slot = document.createElement('div');
+                    const item = tray[i];
+                    const isSelected = selected && selected.source === 'tray' && selected.index === i;
+                    
+                    slot.className = `w-11 h-13 rounded-xl tray-slot flex items-center justify-center text-xl relative transition-all ${isSelected ? 'selected' : ''}`;
+                    if (item) {
+                        const itemData = ALL_ITEMS.find(it => it.id === item) || { icon: '❓' };
+                        slot.innerText = itemData.icon;
+                        slot.onclick = () => handleTrayClick(i);
+                    } else {
+                        slot.onclick = () => handleTrayClick(i);
+                    }
+                    trayContainer.appendChild(slot);
+                }
+            }
+
+            const trayCountEl = document.getElementById('tray-count');
+            if (trayCountEl) {
+                trayCountEl.innerText = `${tray.length} / 4`;
+            }
+        }
+
+        // 最前列（★付き）または棚全般へのアクション判定
+        function handleSlotClick(rowIndex, isLeft) {
+            const shelf = isLeft ? shelves[rowIndex].left : shelves[rowIndex].right;
+            const topIndex = isLeft ? shelf.length - 1 : 0;
+            const topItem = shelf.length > 0 ? shelf[topIndex] : null;
+
+            if (selected) {
+                // 同じ場所を再選択した場合は選択解除
+                if (selected.source === 'shelf' && selected.rowIndex === rowIndex && selected.isLeft === isLeft) {
+                    selected = null;
+                    render();
+                    return;
+                }
+
+                // 移動先の棚への配置チェック
+                const selectedItem = getSelectedItem();
+                if (shelf.length >= MAX_CAPACITY) {
+                    showToast("この棚は満杯です！");
+                    return;
+                }
+
+                // ★付きの元の絵文字と動かそうとしている絵文字が同じかチェック
+                if (topItem && topItem !== selectedItem) {
+                    showToast("★マークの絵文字が違う棚には置けません！");
+                    return;
+                }
+
+                // 移動の実行
+                removeSelectedItem();
+                if (isLeft) {
+                    shelf.push(selectedItem);
+                } else {
+                    shelf.unshift(selectedItem); // 右棚は中央側(0番目)に追加して奥へ詰める
+                }
+                selected = null;
+                render();
+                checkWin();
+            } else {
+                // 選択動作: 最前列(★付き)のみ選択可能
+                if (shelf.length === 0) {
+                    showToast("この棚は空です！");
+                    return;
+                }
+                selected = { source: 'shelf', rowIndex, isLeft, index: topIndex };
+                render();
+            }
+        }
+
+        function handleTrayClick(index) {
+            if (selected) {
+                if (selected.source === 'tray' && selected.index === index) {
+                    selected = null;
+                    render();
+                    return;
+                }
+
+                // トレイへの移動
+                if (!tray[index]) {
+                    if (tray.length >= 4) {
+                        showToast("トレイがいっぱいです！");
+                        return;
+                    }
+                    const itemToMove = getSelectedItem();
+                    removeSelectedItem();
+                    tray.push(itemToMove);
+                    selected = null;
+                    render();
+                }
+            } else {
+                if (tray[index]) {
+                    selected = { source: 'tray', index };
+                    render();
+                }
+            }
+        }
+
+        function getSelectedItem() {
+            if (!selected) return null;
+            if (selected.source === 'shelf') {
+                const shelf = selected.isLeft ? shelves[selected.rowIndex].left : shelves[selected.rowIndex].right;
+                return shelf[selected.index];
+            } else {
+                return tray[selected.index];
+            }
+        }
+
+        function removeSelectedItem() {
+            if (selected.source === 'shelf') {
+                const shelf = selected.isLeft ? shelves[selected.rowIndex].left : shelves[selected.rowIndex].right;
+                if (selected.isLeft) {
+                    shelf.pop();
+                } else {
+                    shelf.shift(); // 右棚は0番目を取り出す
+                }
+            } else {
+                tray.splice(selected.index, 1);
+            }
+        }
+
+        function checkWin() {
+            let isComplete = true;
+            shelves.forEach(row => {
+                [row.left, row.right].forEach(shelf => {
+                    if (shelf.length > 0 && (shelf.length !== MAX_CAPACITY || !shelf.every(item => item === shelf[0]))) {
+                        isComplete = false;
+                    }
+                });
+            });
+
+            if (isComplete && tray.length === 0) {
+                setTimeout(() => {
+                    const winModal = document.getElementById('win-modal');
+                    if (winModal) {
+                        winModal.classList.remove('opacity-0', 'pointer-events-none');
+                    }
+                }, 300);
+            }
+        }
+
+        function nextLevel() {
+            initGame(currentLevel + 1);
+        }
+
+        window.onload = function() {
+            initGame(1);
+        };
+    </script>
+</body>
+</html>
