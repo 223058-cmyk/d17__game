@@ -111,7 +111,10 @@
             <div class="bg-amber-950/80 border border-amber-700/50 px-3 py-1 rounded-full text-xs font-bold text-amber-300">
                 LEVEL <span id="level-num">1</span>
             </div>
-            <button onclick="initGame(currentLevel)" class="bg-amber-800 hover:bg-amber-700 text-amber-100 p-2 rounded-lg text-xs transition">
+            <button id="undo-btn" onclick="undoMove()" disabled class="bg-amber-800 hover:bg-amber-700 text-amber-100 px-2 py-2 rounded-lg text-xs transition disabled:opacity-40 disabled:cursor-not-allowed">
+                1手戻す
+            </button>
+            <button onclick="initGame(currentLevel)" aria-label="このレベルをやり直す" class="bg-amber-800 hover:bg-amber-700 text-amber-100 p-2 rounded-lg text-xs transition">
                 <i class="fa-solid fa-rotate-right"></i>
             </button>
         </div>
@@ -175,6 +178,8 @@
         let shelves = [];
         let tray = [];
         let selected = null; // { source: 'shelf'|'tray', rowIndex, isLeft, index }
+        let previousMove = null;
+        let winTimeout = null;
 
         function showToast(msg) {
             const toast = document.getElementById('toast');
@@ -188,6 +193,8 @@
 
         // レベルに応じたステージ自動生成 (レベルが上がるごとにアイテム種数・棚段数が増加)
         function initGame(lvl = 1) {
+            clearTimeout(winTimeout);
+            previousMove = null;
             currentLevel = lvl;
             const levelEl = document.getElementById('level-num');
             if (levelEl) levelEl.innerText = currentLevel;
@@ -256,7 +263,27 @@
             render();
         }
 
+        function rememberMove() {
+            clearTimeout(winTimeout);
+            previousMove = {
+                shelves: shelves.map(row => ({ left: row.left.slice(), right: row.right.slice() })),
+                tray: tray.slice()
+            };
+        }
+
+        function undoMove() {
+            if (!previousMove) return;
+            clearTimeout(winTimeout);
+            shelves = previousMove.shelves;
+            tray = previousMove.tray;
+            previousMove = null;
+            selected = null;
+            document.getElementById('win-modal').classList.add('opacity-0', 'pointer-events-none');
+            render();
+        }
+
         function render() {
+            document.getElementById('undo-btn').disabled = previousMove === null;
             const container = document.getElementById('shelf-container');
             if (!container) return;
             container.innerHTML = '';
@@ -403,6 +430,7 @@
                 }
 
                 // 移動の実行
+                rememberMove();
                 removeSelectedItem();
                 if (isLeft) {
                     shelf.push(selectedItem);
@@ -438,6 +466,7 @@
                         return;
                     }
                     const itemToMove = getSelectedItem();
+                    rememberMove();
                     removeSelectedItem();
                     tray.push(itemToMove);
                     selected = null;
@@ -475,6 +504,7 @@
         }
 
         function checkWin() {
+            clearTimeout(winTimeout);
             let isComplete = true;
             shelves.forEach(row => {
                 [row.left, row.right].forEach(shelf => {
@@ -485,7 +515,7 @@
             });
 
             if (isComplete && tray.length === 0) {
-                setTimeout(() => {
+                winTimeout = setTimeout(() => {
                     const winModal = document.getElementById('win-modal');
                     if (winModal) {
                         winModal.classList.remove('opacity-0', 'pointer-events-none');
